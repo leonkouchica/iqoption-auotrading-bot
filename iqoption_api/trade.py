@@ -3,8 +3,9 @@ import logging
 from datetime import datetime, UTC
 from iqoption_api.instruments.options_assests import UNDERLYING_ASSESTS
 from iqoption_api.utilities import get_expiry_timestamp, get_remaining_secs
+from iqoption_api.state import appstate
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("api:trade")
 
 
 # Custom exceptions for better error categorization
@@ -24,10 +25,9 @@ class TradeManager:
     Handles trade parameter validation, order execution, confirmation waiting,
     and trade outcome tracking.
     """
-    def __init__(self, websocket_manager, message_handler, account_manager):
+    def __init__(self, websocket_manager, message_handler):
         self.ws_manager = websocket_manager
         self.message_handler = message_handler
-        self.account_manager = account_manager
 
     def get_asset_id(self, asset_name: str) -> int:
         """
@@ -102,7 +102,7 @@ class TradeManager:
                 if isinstance(result, int):
                     # Success: result is order ID
                     expires_in = get_remaining_secs(self.message_handler.server_time, expiry)
-                    # logger.info(f'Order Placed, ID: {result}, Expires in: {expires_in} Seconds')
+                    logger.info(f'Order Placed, ID: {result}, Expires in: {expires_in} Seconds')
                     return True, result
                 else:
                     # Failure: result is error message
@@ -140,7 +140,7 @@ class TradeManager:
             "name": "digital-options.place-digital-option",
             "version": "3.0",
             "body": {
-                "user_balance_id": int(self.account_manager.current_account_id),
+                "user_balance_id": appstate.balance_id,
                 "instrument_id": str(instrument_id),
                 "amount": str(amount),
                 "asset_id": int(active_id),
@@ -176,7 +176,7 @@ class TradeManager:
             raise InvalidTradeParametersError(f"Expiry must be positive integer, got: {expiry}")
         
         # Ensure active account is available
-        if not self.account_manager.current_account_id:
+        if not appstate.balance_id:
             raise TradeExecutionError("No active account available")
         
     def _place_binary_options_trade(self, asset:str, amount:float, direction:str, expiry:int=1):
@@ -196,7 +196,7 @@ class TradeManager:
                             "expired": int(expiration),
                             "direction": direction.lower(),
                             "option_type_id": option_type_id,
-                            "user_balance_id": int(self.account_manager.current_account_id)
+                            "user_balance_id": appstate.balance_id
                         },
                     "name": "binary-options.open-option",
                     "version": "1.0"
@@ -231,7 +231,7 @@ class TradeManager:
             # Check if trade is closed
             if order_data:
                 order_data = order_data.to_dict()
-                # logger.info(f"IDs: {order_id} | Result: {order_data['result']}, PnL: ${order_data['pl_amount']:.2f}")
+                logger.info(f"IDs: {order_id} | Result: {order_data['result']}, PnL: ${order_data['pl_amount']:.2f}")
                 return True, order_data, order_data['pl_amount']
             
             time.sleep(.5) # Check every 500ms

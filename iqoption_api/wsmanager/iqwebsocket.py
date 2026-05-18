@@ -95,6 +95,7 @@ class WebSocketManager:
         Handle incoming WebSocket messages.
         """
         try:
+            # print(message)
             message = json.loads(message)
             self.message_handler.handle_message(message)
             self.ws_is_active = True

@@ -16,7 +16,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    asset: str = "EURUSD-OTC"                    # Trading asset
+    asset: str = "EURUSD-op"                    # Trading asset
     expiry_minutes: int = 1                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     
@@ -36,7 +36,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - POSITION SIZING
     # ═══════════════════════════════════════════════════════════════════════
-    risk_per_trade: float = 2.0                  # % of balance to risk per trade
+    risk_per_trade: float = 0.2                  # % of balance to risk per trade
     min_trade_amount: float = 5.0                # Minimum trade size
     max_trade_amount: float = 100.0              # Maximum trade size
     

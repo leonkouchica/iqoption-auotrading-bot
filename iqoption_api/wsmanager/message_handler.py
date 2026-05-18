@@ -1,9 +1,9 @@
 import json
 import logging
 logger = logging.getLogger(__name__)
+from iqoption_api.state import appstate
 from collections import defaultdict, deque
 from iqoption_api.models import TradeOutcomeChecker
-
 
 def nested_dict(n, type):
     if n == 1:
@@ -23,10 +23,6 @@ class MessageHandler:
         Sets up storage for profile data, balance information, market data, and position tracking.
         """
         self.server_time = None
-
-        # User profile and account information
-        self.profile_msg = None
-        self.balance_data = None
 
         # Market and time data
         self.candles = None
@@ -102,15 +98,15 @@ class MessageHandler:
         Args:
             message (dict): Profile message containing user account information and balances
         """
-        self.profile_msg = message
-        balances = message['msg']['balances']
+        appstate.profile_msg = message
+        for balance in message['msg']['balances']:
+            if balance['type'] == appstate.balance_type:
+                appstate.balance_id = balance['id']
+                appstate.balance = balance['amount']
+                appstate.account_list['type'] = balance
+            elif balance['type'] == 4:
+                 appstate.account_list['type'] = balance
 
-        # Find demo account balance (type 4) and set as active
-        for balance in balances:
-            if balance['type'] == 4:  # Demo account | 1 for real, 4 for demo
-                self.active_balance_id = balance['id']
-                break
-    
     def _handle_balances(self, message):
         """
         Handle balance update messages.
@@ -118,7 +114,7 @@ class MessageHandler:
         Args:
             message (dict): Message containing current balance information
         """
-        self.balance_data = message['msg']
+        appstate.balance_data = message['msg']
     
     def _handle_training_balance_reset(self, message):
         """
