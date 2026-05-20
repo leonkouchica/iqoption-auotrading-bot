@@ -4,8 +4,8 @@ import logging
 from datetime import datetime
 from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
-from iqoption_api.iqclient import IQOptionClient
-from iqoption_api.models import Direction, OptionsTradeParams, OptionType
+from iqoptionapi.iqclient import IQOptionClient
+from iqoptionapi.models import Direction, OptionsTradeParams, OptionType
 from _utilities import Colors, print_signal, print_trade_outcome, \
     print_trade_placement, TradeRecord
 
@@ -16,7 +16,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
 
 
 @dataclass

@@ -3,12 +3,11 @@ import time
 import json
 import logging
 from datetime import datetime
-from iqoption_api.settings import *
 from dataclasses import dataclass
 from typing import Optional, List
 from typing import List, Dict, Any
-from iqoption_api.utilities import get_timestamps
-from iqoption_api.state import appstate
+from iqoptionapi.utilities import get_timestamps
+from iqoptionapi.state import appstate
 logger = logging.getLogger("api:account")
 
 
@@ -91,7 +90,7 @@ class AccountManager:
         self.get_balances()
 
         # Wait for balance data to be populated
-        while self.message_handler.balance_data is None:
+        while appstate.balance_data is None:
             time.sleep(0.1)
 
         # Filter and create TournamentAccount objects for tournament accounts
@@ -101,8 +100,8 @@ class AccountManager:
                 name=item['tournament_name'],
                 balance=item['amount']
             )
-            for item in self.message_handler.balance_data
-            if item['type'] == ACCOUNT_TOURNAMENT
+            for item in appstate.balance_data
+            if item['type'] == 2
         ]
     
     def get_balance(self) -> Optional[float]:
@@ -117,61 +116,44 @@ class AccountManager:
         for account in self.get_balances():
             if account['id'] == appstate.balance_id:
                 return account['amount']
-            
-    def _validate_account_type(self, account_type:str, exit=False) -> str:
-        """
-        Validate that the account type is valid.
-        
-        Args:
-            account_type (str): Account type to validate ('real' or 'demo').
-            exit (bool): Whether to exit the program on invalid type.
-            
-        Returns:
-            str: Lowercase account type if valid, None if invalid.
-        """
-
-        if account_type.lower() not in ['real', 'demo']:
-            logger.error(f"{account_type} is Invalid Account Type! Needs to one of ['real', 'demo']")
-            if exit:
-                sys.exit()
-            return
-        return account_type.lower()
     
-    def switch_account(self, account_type: str) -> None:
+    def switch_account(self, account_type: str) -> bool:
         """
         Switch between real and demo accounts.
         
-        Changes the active account type and updates portfolio subscriptions
-        to receive position updates for the new account.
-        
         Args:
             account_type (str): Target account type ('real' or 'demo').
+            
+        Returns:
+            bool: True if switch successful
+            
+        Raises:
+            ValueError: If account type is invalid
+            LookupError: If target account not found in balance list
         """
-
-        # Validate the requested account type
+        # Validates and sets appstate.balance_type + appstate.balance_type_str
         appstate.validate_account_type(account_type)
-        
-        # Get current account balances
-        accounts = self.get_balances()
 
-        # Find the target account ID based on account type
-        target_account_id = None
-        for account in accounts:
-            if ((account_type.lower() == 'real' and account['type'] == 1) or 
-                (account_type.lower() == 'demo' and account['type'] == 4)):
-                target_account_id = account['id']
-                break
+        balances = self.get_balances()
+        if not balances:
+            raise LookupError("No balances returned from server")
 
-        # Update portfolio subscription to new account
+        target_account_id = next(
+            (account['id'] for account in balances
+            if account['type'] == appstate.balance_type),
+            None
+        )
+
+        if target_account_id is None:
+            raise LookupError(
+                f"No account found for type '{account_type}' "
+                f"(balance_type={appstate.balance_type}). "
+                f"Available types: {[a['type'] for a in balances]}"
+            )
+
         self._set_portfolio_subscription(target_account_id)
-
-        # Verify switch was successful and update current account type
-        if appstate.balance_id == target_account_id:
-            self.current_account_type = account_type.lower()
-            logger.info(f'Successfully switched to {account_type.capitalize()} Account'
-                        f'(ID: {target_account_id}, Balance: {self.get_balance()})')
-            return True
-
+        logger.info(f"Switched to {account_type} account (ID: {target_account_id})")
+        return True
     
     def _set_portfolio_subscription(self, account_id:int)-> None:
         """
@@ -186,15 +168,15 @@ class AccountManager:
 
         # Unsubscribe from current account if exists
         if appstate.balance_id is not None:
-            self._portfolio_position_change('unsubscribeMessage', appstate.balance_id)
+            self._portfolio_position_change('unsubscribeMessage')
         
         # Update current account ID
-        appstate.update('balance_id', account_id)
+        appstate.update(balance_id=account_id)
 
         # Subscribe to new account's position changes
-        self._portfolio_position_change('subscribeMessage', appstate.balance_id)
+        self._portfolio_position_change('subscribeMessage')
     
-    def _portfolio_position_change(self, msg_name:str, account_id:int) -> None:
+    def _portfolio_position_change(self, msg_name:str) -> None:
         """
         Subscribe or unsubscribe to portfolio position changes for an account.
         
@@ -214,7 +196,7 @@ class AccountManager:
                 "params": {
                     "routingFilters": {
                         "instrument_type": str(instrument),
-                        "user_balance_id": account_id
+                        "user_balance_id": appstate.balance_id
                     }
                 }
             }

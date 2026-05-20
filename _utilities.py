@@ -1,7 +1,7 @@
 import logging
 from typing import Dict
 from datetime import datetime
-from iqoption_api.models import  Direction
+from iqoptionapi.models import  Direction
 from dataclasses import dataclass, field, asdict
 
 
@@ -152,7 +152,7 @@ def print_trade_outcome(trade_record: TradeRecord):
 
 from typing import Dict
 from datetime import datetime
-from iqoption_api.models import  Direction
+from iqoptionapi.models import  Direction
 
 
 def is_current_seconds_between_zero_and_two(timestamp):
@@ -180,7 +180,7 @@ def is_current_seconds_between_zero_and_two(timestamp):
 import logging
 from typing import Dict
 from datetime import datetime
-from iqoption_api.models import  Direction
+from iqoptionapi.models import  Direction
 from dataclasses import dataclass, field, asdict
 
 

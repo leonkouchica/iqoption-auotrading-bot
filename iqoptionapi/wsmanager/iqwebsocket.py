@@ -3,7 +3,6 @@ import time
 import logging
 import websocket
 import threading
-from iqoption_api.settings import WS_URL
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,6 @@ class WebSocketManager:
         Args:
             message_handler: Handler instance that processes incoming messages
         """
-        self.ws_url = WS_URL
         self.websocket = None
         self.ws_is_active = False
         self.message_handler = message_handler
@@ -39,7 +37,7 @@ class WebSocketManager:
 
         # Create WebSocket application with event handlers
         self.websocket = websocket.WebSocketApp(
-            self.ws_url,
+            'wss://ws.iqoption.com/echo/websocket',
             on_message=self._on_message,  # Handle incoming messages
             on_open=self._on_open,        # Handle connection opened
             on_close=self._on_close,      # Handle connection closed

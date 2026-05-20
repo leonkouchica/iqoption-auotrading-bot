@@ -45,8 +45,8 @@ from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Dict, Optional, Tuple
 from tradingconfig import TradingConfig
-from iqoption_api.iqclient import IQOptionClient
-from iqoption_api.models import Direction, OptionsTradeParams, OptionType
+from iqoptionapi.iqclient import IQOptionClient
+from iqoptionapi.models import Direction, OptionsTradeParams, OptionType
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -212,20 +212,21 @@ class RiskManager:
     def print_status(self):
         """Print current risk status"""
         stats = self.get_stats()
-        print(f"\n{'='*50}")
-        print(f"📊 RISK MANAGEMENT STATUS")
-        print(f"{'='*50}")
-        print(f"💰 Balance:        ${stats['balance']:.2f} (Peak: ${stats['peak_balance']:.2f})")
-        print(f"📉 Drawdown:       {stats['drawdown']:.1f}%")
-        print(f"📈 Daily P&L:      ${stats['daily_pnl']:+.2f}")
-        print(f"🎯 Win Rate:       {stats['win_rate']:.1f}% ({stats['daily_wins']}W/{stats['daily_losses']}L)")
-        print(f"📊 Trades Today:   {stats['daily_trades']}/{self.config.max_daily_trades}")
-        print(f"🔥 Consecutive:    {stats['consecutive_wins']}W / {stats['consecutive_losses']}L")
+        print("")
+        logger.info(f"{'='*50}")
+        logger.info(f"📊 RISK MANAGEMENT STATUS")
+        logger.info(f"{'='*50}")
+        logger.info(f"💰 Balance:        ${stats['balance']:.2f} (Peak: ${stats['peak_balance']:.2f})")
+        logger.info(f"📉 Drawdown:       {stats['drawdown']:.1f}%")
+        logger.info(f"📈 Daily P&L:      ${stats['daily_pnl']:+.2f}")
+        logger.info(f"🎯 Win Rate:       {stats['win_rate']:.1f}% ({stats['daily_wins']}W/{stats['daily_losses']}L)")
+        logger.info(f"📊 Trades Today:   {stats['daily_trades']}/{self.config.max_daily_trades}")
+        logger.info(f"🔥 Consecutive:    {stats['consecutive_wins']}W / {stats['consecutive_losses']}L")
         
         if self.cooloff_until > time.time():
             remaining = int(self.cooloff_until - time.time())
-            print(f"⏸️  Cool-off:       {remaining} seconds remaining")
-        print(f"{'='*50}\n")
+            logger.info(f"⏸️  Cool-off:       {remaining} seconds remaining")
+        logger.info(f"{'='*50}\n")
 
 
 # ═══════════════════════════════════════════════════════════════════════

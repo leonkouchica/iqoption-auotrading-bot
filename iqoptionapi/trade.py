@@ -1,9 +1,9 @@
 import time
 import logging
 from datetime import datetime, UTC
-from iqoption_api.instruments.options_assests import UNDERLYING_ASSESTS
-from iqoption_api.utilities import get_expiry_timestamp, get_remaining_secs
-from iqoption_api.state import appstate
+from iqoptionapi.instruments.options_assests import UNDERLYING_ASSESTS
+from iqoptionapi.utilities import *
+from iqoptionapi.state import appstate
 
 logger = logging.getLogger("api:trade")
 
@@ -28,23 +28,6 @@ class TradeManager:
     def __init__(self, websocket_manager, message_handler):
         self.ws_manager = websocket_manager
         self.message_handler = message_handler
-
-    def get_asset_id(self, asset_name: str) -> int:
-        """
-        Get numeric asset ID for trading asset name.
-        
-        Args:
-            asset_name: Trading asset name (e.g., 'EURUSD-op', 'EURUSD-OTC')
-            
-        Returns:
-            Asset ID for API calls
-            
-        Raises:
-            KeyError: If asset not found
-        """
-        if asset_name in UNDERLYING_ASSESTS:
-            return UNDERLYING_ASSESTS[asset_name]
-        raise KeyError(f'{asset_name} not found!')
 
     def _place_digital_option_trade(self, asset:str, amount:float, direction:str, expiry:int=1):
         """
@@ -129,7 +112,7 @@ class TradeManager:
         """
 
         # Get asset ID and calculate expiration timestamp
-        active_id = str(self.get_asset_id(asset))
+        active_id = str(get_asset_id(asset))
         expiration = get_expiry_timestamp(self.message_handler.server_time, expiry)
         date_formatted = datetime.fromtimestamp(expiration, UTC).strftime("%Y%m%d%H%M")
 
@@ -192,7 +175,7 @@ class TradeManager:
             msg = {
                     "body":{
                             "price": int(amount),
-                            "active_id": int(self.get_asset_id(asset)),
+                            "active_id": int(get_asset_id(asset)),
                             "expired": int(expiration),
                             "direction": direction.lower(),
                             "option_type_id": option_type_id,
@@ -231,7 +214,7 @@ class TradeManager:
             # Check if trade is closed
             if order_data:
                 order_data = order_data.to_dict()
-                logger.info(f"IDs: {order_id} | Result: {order_data['result']}, PnL: ${order_data['pl_amount']:.2f}")
+                # logger.info(f"IDs: {order_id} | Result: {order_data['result']}, PnL: ${order_data['pl_amount']:.2f}")
                 return True, order_data, order_data['pl_amount']
             
             time.sleep(.5) # Check every 500ms

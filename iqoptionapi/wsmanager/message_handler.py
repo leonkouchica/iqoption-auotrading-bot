@@ -1,9 +1,9 @@
 import json
 import logging
 logger = logging.getLogger(__name__)
-from iqoption_api.state import appstate
+from iqoptionapi.state import appstate
 from collections import defaultdict, deque
-from iqoption_api.models import TradeOutcomeChecker
+from iqoptionapi.models import TradeOutcomeChecker
 
 def nested_dict(n, type):
     if n == 1:
@@ -60,6 +60,7 @@ class MessageHandler:
             'profile': self._handle_profile,
             'candles': self._handle_candles,
             'balances': self._handle_balances,
+            'balance-changed': self._handle_balance_changed,
             'timeSync': self._handle_server_time,
             'underlying-list': self._handle_underlying_list,
             'initialization-data': self._handle_initialization_data,
@@ -101,11 +102,8 @@ class MessageHandler:
         appstate.profile_msg = message
         for balance in message['msg']['balances']:
             if balance['type'] == appstate.balance_type:
-                appstate.balance_id = balance['id']
-                appstate.balance = balance['amount']
-                appstate.account_list['type'] = balance
-            elif balance['type'] == 4:
-                 appstate.account_list['type'] = balance
+                appstate.update(balance_id=balance['id'])
+            appstate.account_list['type'] = balance
 
     def _handle_balances(self, message):
         """
@@ -114,7 +112,15 @@ class MessageHandler:
         Args:
             message (dict): Message containing current balance information
         """
-        appstate.balance_data = message['msg']
+        balance = next(
+            (account['amount'] for account in message['msg']
+            if account['type'] == appstate.balance_type),
+            None
+        )
+        appstate.update(balance=balance, balance_data=message['msg'])
+
+    def _handle_balance_changed(self, message):
+        appstate.update(balance=message['msg']['current_balance']['amount'])
     
     def _handle_training_balance_reset(self, message):
         """

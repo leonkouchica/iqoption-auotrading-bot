@@ -1,20 +1,22 @@
+import os
 import sys
 import time
 import logging
 import requests
+from dotenv import load_dotenv
 from typing import Optional, List
-from iqoption_api.models import *
-from iqoption_api.settings import *
 
-from iqoption_api.state import appstate
-from iqoption_api.trade import TradeManager
-from iqoption_api.markets import MarketManager
-from iqoption_api.accounts import AccountManager
-from iqoption_api.instruments import options_assests
-from iqoption_api.wsmanager.iqwebsocket import WebSocketManager
-from iqoption_api.wsmanager.message_handler import MessageHandler
+from iqoptionapi.models import *
+from iqoptionapi.state import appstate
+from iqoptionapi.trade import TradeManager
+from iqoptionapi.markets import MarketManager
+from iqoptionapi.accounts import AccountManager
+from iqoptionapi.instruments import options_assests
+from iqoptionapi.wsmanager.iqwebsocket import WebSocketManager
+from iqoptionapi.wsmanager.message_handler import MessageHandler
 
 logger = logging.getLogger("iqoption api")
+load_dotenv()
 
 
 class IQOptionClient:
@@ -31,17 +33,17 @@ class IQOptionClient:
         Args:
             email (str, optional): Login email. Defaults to settings.EMAIL
             password (str, optional): Login password. Defaults to settings.PASSWORD  
-            account_type (str, optional): Account type. Defaults to settings.DEFAULT_ACCOUNT_TYPE
+            account_type (str, optional): Account type.
         """
-        self.email = email or EMAIL
-        self.password = password or PASSWORD
         self.appstate = appstate
-        appstate.validate_account_type(account_type)
+        self.email = email or os.getenv('IQ_EMAIL')
+        self.password = password or os.getenv('IQ_PASSWORD')
+        self.appstate.validate_account_type(account_type)
 
         # Initialize HTTP session for login requests
-        self.session = requests.Session()
         self._connected = False
         self.subscribe_candle = []
+        self.session = requests.Session()
         
         # Initialize core managers
         self.message_handler = MessageHandler()
@@ -49,6 +51,7 @@ class IQOptionClient:
         self.account_manager = AccountManager(self.websocket, self.message_handler)
         self.market_manager = MarketManager(self.websocket, self.message_handler)
         self.trade_manager = TradeManager(self.websocket, self.message_handler)
+        
         logger.info('IQOption Client initialized successfully')
 
     def _login(self):
@@ -70,7 +73,8 @@ class IQOptionClient:
 
         try:
             # Send login request
-            response = self.session.post(url=LOGIN_URL, 
+            response = self.session.post(
+                url='https://api.iqoption.com/v2/login', 
                 data={'identifier': self.email, 'password': self.password})
             response.raise_for_status()
 
@@ -89,7 +93,9 @@ class IQOptionClient:
         Args:
             data (dict, optional): Additional logout data
         """
-        if self.session.post(url=LOGOUT_URL, data=data).status_code == 200:
+        if self.session.post(
+            url="https://auth.iqoption.com/api/v1.0/logout", 
+            data=data).status_code == 200:
             self._connected = False
             logger.info(f'Logged out Successfully')
     
@@ -120,9 +126,7 @@ class IQOptionClient:
             while self.appstate.profile_msg is None:
                 time.sleep(.1)
 
-            # Set default account and mark as connected
-            # self.account_manager.set_default_account()
-            self.account_manager._portfolio_position_change('subscribeMessage', appstate.balance_id)
+            self.account_manager._portfolio_position_change('subscribeMessage')
 
             self._connected = True
             return True
@@ -172,7 +176,7 @@ class IQOptionClient:
             bool: True if switch successful, False if already on target account
         """
         self._ensure_connected()
-        if account_type.lower() == self.account_manager.current_account_type:
+        if account_type.lower() == self.appstate.balance_type_str:
             logger.warning(f'Already on {account_type.lower()} account. No switch needed.')
             return False
         return self.account_manager.switch_account(account_type)

@@ -68,8 +68,8 @@ class _AppState:
                 if not hasattr(self, k):
                     raise AttributeError(f"Unknown state key: {k!r}")
                 setattr(self, k, v)
-    
-    def validate_account_type(self, account_type: str, exit_on_error: bool = True) -> Tuple[bool, Optional[str]]:
+
+    def validate_account_type(self, account_type: str, exit_on_error: bool = True):
         """
         Validate account type with state tracking.
         
@@ -92,13 +92,8 @@ class _AppState:
                     import sys
                     sys.exit()
                 
-            if account_type == 'real':
-                self.balance_type = 1
-            elif account_type == 'demo':
-                self.balance_type = 4
             self.balance_type_str = account_type
-            
-            return True, None
+            self.balance_type     = 1 if account_type == 'real' else 4
 
 
 appstate = _AppState()

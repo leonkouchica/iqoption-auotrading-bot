@@ -1,7 +1,8 @@
 import logging
+from pathlib import Path
 from typing import Dict, Tuple
 from dataclasses import dataclass
-from iqoption_api.models import OptionType
+from iqoptionapi.models import OptionType
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - PROTECTION FEATURES
     # ═══════════════════════════════════════════════════════════════════════
-    max_consecutive_losses: int = 3              # Pause after N losses
+    max_consecutive_losses: int = 7              # Pause after N losses
     cooloff_minutes: int = 5                     # How long to pause after losses
     max_drawdown_percent: float = 10.0           # Stop if balance drops X% from peak
     
@@ -121,4 +122,18 @@ class TradingConfig:
         logger.info(f"  Trading Hours:       {self.trading_start_hour}:00 - {self.trading_end_hour}:00")
         
         logger.info("="*50)
-        print("")
+        # print("")
+
+
+
+@dataclass
+class AnalyticsConfig:
+    output_dir: str = "trading_data"
+    save_csv: bool = True
+    generate_charts: bool = True
+    save_format: str = "png"
+    calculate_sharpe_ratio: bool = True
+    calculate_max_drawdown: bool = True
+
+    def __post_init__(self):
+        Path(self.output_dir).mkdir(parents=True, exist_ok=True)
