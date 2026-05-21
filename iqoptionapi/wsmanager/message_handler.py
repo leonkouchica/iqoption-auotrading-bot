@@ -4,6 +4,8 @@ logger = logging.getLogger(__name__)
 from iqoptionapi.state import appstate
 from collections import defaultdict, deque
 from iqoptionapi.models import TradeOutcomeChecker
+from iqoptionapi.candles import CandleSubscriptionManager
+
 
 def nested_dict(n, type):
     if n == 1:
@@ -16,36 +18,59 @@ class MessageHandler:
     """
     Handles various types of messages received from IQ Option Websocket.
     """
-    def __init__(self):
+    def __init__(self, candle_manager:CandleSubscriptionManager=None):
         """
         Initialize the MessageHandler with default values for all message types.
         
         Sets up storage for profile data, balance information, market data, and position tracking.
         """
+
+        self.candle_manager = candle_manager
+        
+        # Keep existing non-candle attributes
         self.server_time = None
-
-        # Market and time data
-        self.candles = None
         self.underlying_list = None
-        self.initialization_data = None
         self._underlying_assests = None
-
-        self.candle_generated_check = nested_dict(2, dict)
-
-        # Position tracking
+        self.initialization_data = None
         self.hisory_positions = None
-
         self.position_info = {}
         self.orders_confirmation = {}
-
         self.trade_outcome_checker = TradeOutcomeChecker()
 
-        # Candle history storage
-        self._current_candle = None
-        self._current_id     = None
-        self.candle_history  = nested_dict(2, lambda: deque(maxlen=9))
-        self._new_candle_callback = None   # called when a new candle opens
-        
+
+        # self.server_time = None
+
+        # # Market and time data
+        # self.candles = None
+        # self.underlying_list = None
+        # self.initialization_data = None
+
+        # self.candle_generated_check = nested_dict(2, dict)
+
+        # # Position tracking
+        # self.hisory_positions = None
+
+        # self.position_info = {}
+        # self.orders_confirmation = {}
+
+        # self.trade_outcome_checker = TradeOutcomeChecker()
+
+        # self.real_time_candles = nested_dict(3, dict)
+        # self.candle_generated_check = nested_dict(2, dict)
+        # self.real_time_candles_maxdict_table = nested_dict(2, dict)
+
+        # self.candles = defaultdict(lambda: defaultdict(lambda: deque(maxlen=10)))
+
+        # # Candle history storage
+        # self._current_candle = None
+        # self._current_id     = None
+        # self.candle_history  = nested_dict(2, lambda: deque(maxlen=9))
+        # self._new_candle_callback = None   # called when a new candle opens
+
+    def set_candle_manager(self, candle_manager):
+        """Inject candle manager after initialization."""
+        self.candle_manager = candle_manager
+
     def handle_message(self, message):
         """
         Route incoming messages to appropriate handler method based on message name.
@@ -71,8 +96,8 @@ class MessageHandler:
             "option":self._handle_option_opened,
 
             "socket-option-closed":self._handle_socket_option_closed,
-            # "candle-generated":self._handle_candle_generated,
-            "candle-generated": self._on_candle,
+            "candle-generated":self._handle_candles_generated,
+            # "candle-generated": self._on_candle,
         }
 
         # Get the appropriate handler and invoke it if found
@@ -244,66 +269,10 @@ class MessageHandler:
         self.position_info[int(message["msg"]["id"])] = \
             self.trade_outcome_checker.check_trade_outcome(message['msg'])
 
-
-
-    # def _handle_candles_generated(self, message):
-    #     """
-    #     Handle real-time tick/candle generation messages.
-    #     
-    #     This method is commented out but would handle real-time price updates
-    #     with thread-safe tick data storage and timestamp management.
-    #     """
-    #     with self.tick_lock:
-    #         # Store the raw tick data
-    #         self.latest_tick = message.get('msg', {})
-    #         # Add current timestamp if not present
-    #         if 'at' not in self.latest_tick:
-    #             self.latest_tick['at'] = int(time.time() * 1e9)
-
-    def _handle_candle_generated(self, message):
-        """Process real-time candle data."""
-
-    def _on_candle(self, message):
-            """Handle real-time candle updates and store last 5 closed candles per asset/timeframe."""
-            msg = message.get('msg', '')
-
-            candle_id = msg["id"]
-            asset_id  = msg["active_id"]
-            timeframe = msg["size"]
-            # ── Mark subscription as confirmed ───────────────────────────
-            # start_candles_one_stream waits for this to be True
-            try:
-                # reverse-lookup asset name from id if needed — just set True for now
-                for asset_name, aid in __import__('iqoption_api.instruments.options_assests', 
-                                                fromlist=['UNDERLYING_ASSESTS']).UNDERLYING_ASSESTS.items():
-                    if aid == asset_id:
-                        self.candle_generated_check[asset_name][timeframe] = True
-                        break
-            except Exception:
-                pass
-
-            # First candle received
-            if self._current_id is None:
-                self._current_id     = candle_id
-                self._current_candle = msg
-                return
-
-            if candle_id != self._current_id:
-                self.candle_history[asset_id][timeframe].append(self._current_candle)
-
-                # ── Fire callback on new candle ──────────────────────
-                if self._new_candle_callback:
-                    try:
-                        self._new_candle_callback(self._current_candle, asset_id, timeframe)
-                    except Exception as e:
-                        logger.error("new_candle_callback error: %s", e)
-
-                self._current_id     = candle_id
-                self._current_candle = msg
-            else:
-                # Update live candle in place
-                self._current_candle = msg
-
-    def get_last_candles(self, asset_id: int, timeframe: int) -> list:
-        """Return last N closed candles for a given asset and timeframe."""
-        return list(self.candle_history[asset_id][timeframe])
+    def _handle_candles_generated(self, message: dict):
+        """
+        Handle candle-generated messages.
+        DOES NOTHING except forward to candle manager.
+        """
+        if self.candle_manager:
+            self.candle_manager.on_candle_message(message)

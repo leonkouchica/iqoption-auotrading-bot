@@ -4,16 +4,19 @@ import time
 import logging
 import requests
 from dotenv import load_dotenv
-from typing import Optional, List
+from typing import Optional, List, Callable
 
 from iqoptionapi.models import *
 from iqoptionapi.state import appstate
 from iqoptionapi.trade import TradeManager
 from iqoptionapi.markets import MarketManager
+from iqoptionapi.utilities import get_asset_id
 from iqoptionapi.accounts import AccountManager
 from iqoptionapi.instruments import options_assests
 from iqoptionapi.wsmanager.iqwebsocket import WebSocketManager
 from iqoptionapi.wsmanager.message_handler import MessageHandler
+from iqoptionapi.candles import CandleSubscriptionManager
+
 
 logger = logging.getLogger("iqoption api")
 load_dotenv()
@@ -44,15 +47,23 @@ class IQOptionClient:
         self._connected = False
         self.subscribe_candle = []
         self.session = requests.Session()
+
+        self.subscribe_candle = []
         
-        # Initialize core managers
+        # Initialize core components
+        self._init_components()
+        
+        logger.info('IQOptionAPIClient initialized successfully')
+    
+    def _init_components(self) -> None:
+        """Initialize or re-initialize all core components."""        
         self.message_handler = MessageHandler()
         self.websocket = WebSocketManager(self.message_handler)
         self.account_manager = AccountManager(self.websocket, self.message_handler)
         self.market_manager = MarketManager(self.websocket, self.message_handler)
         self.trade_manager = TradeManager(self.websocket, self.message_handler)
-        
-        logger.info('IQOption Client initialized successfully')
+        self.candle_manager = CandleSubscriptionManager(self.websocket)
+        self.message_handler.set_candle_manager(self.candle_manager)
 
     def _login(self):
         """
@@ -314,69 +325,151 @@ class IQOptionClient:
 
 
     # ------------------------Subscribe ONE SIZE-----------------------
-    def start_candles_one_stream(self, ACTIVE, size=5):
-        """Subscribe to real-time candle updates for a specific asset."""
-        subscription_key = f"{ACTIVE},{size}"
+    # -----------------------------------------------------------------
+    # Legacy Candle Methods (delegated to CandleSubscriptionManager)
+    # -----------------------------------------------------------------
+
+    def start_candle_stream(self, asset: str, candle_size: int = 60) -> bool:
+        """
+        Start real-time candle stream for an asset.
         
-        # Track subscription
-        if subscription_key not in self.subscribe_candle:
-            self.subscribe_candle.append(subscription_key)
+        Legacy method wrapper that delegates to CandleSubscriptionManager.
         
-        # Initialize tracking structure
-        if ACTIVE not in self.message_handler.candle_generated_check:
-            self.message_handler.candle_generated_check[ACTIVE] = {}
-        self.message_handler.candle_generated_check[ACTIVE][size] = {}
-        
-        # Wait for subscription confirmation
-        start = time.time()
-        timeout = 20
-        
-        while time.time() - start < timeout:
-            # Check if already subscribed
-            if self.message_handler.candle_generated_check[ACTIVE][size] == True:
-                logger.info(f"Subscribed to {ACTIVE} candles (size: {size})")
-                return True
+        Args:
+            asset: Asset name (e.g., "EURUSD", "GBPUSD")
+            candle_size: Timeframe in seconds (60, 300, 900, etc.)
             
-            try:
-                # Send subscription request
-                data = {
-                    "name": "candle-generated",
-                    "params": {
-                        "routingFilters": {
-                            "active_id": str(options_assests.UNDERLYING_ASSESTS[ACTIVE]),
-                            "size": int(size)
-                        }
-                    }
-                }
-                self.websocket.send_message("subscribeMessage", data)
-            except Exception as e:
-                logger.error(f"Error in start_candles_one_stream: {e}")
-                self.connect()
+        Returns:
+            True if subscription successful, False otherwise
             
-            time.sleep(1)
+        Example:
+            client = IQOptionClient()
+            client.connect()
+            client.start_candle_stream("EURUSD", 60)
+        """
+        self._ensure_connected()
+        return self.candle_manager.subscribe(asset, candle_size)
+
+    def stop_candle_stream(self, asset: str, candle_size: int) -> bool:
+        """
+        Stop real-time candle stream for an asset.
         
-        logger.error(f"Timeout subscribing to {ACTIVE} candles")
-        return False
+        Legacy method wrapper that delegates to CandleSubscriptionManager.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD", "GBPUSD")
+            candle_size: Timeframe in seconds (60, 300, 900, etc.)
+            
+        Returns:
+            True if unsubscription successful, False otherwise
+        """
+        self._ensure_connected()
+        return self.candle_manager.unsubscribe(asset, candle_size)
 
-    def stop_candles_one_stream(self, ACTIVE, size):
-        if ((ACTIVE + "," + str(size)) in self.subscribe_candle) == True:
-            self.subscribe_candle.remove(ACTIVE + "," + str(size))
-        while True:
-            try:
-                if self.message_handler.candle_generated_check[str(ACTIVE)][int(size)] == {}:
-                    return True
-            except:
-                pass
+    def get_current_price(self, asset: str, timeframe: int = 60) -> Optional[float]:
+        """
+        Get current price for an asset using cached candle data.
+        
+        Legacy method wrapper that delegates to CandleSubscriptionManager.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD", "GBPUSD")
+            timeframe: Timeframe in seconds to use for price (default: 60)
+            
+        Returns:
+            Current price as float, or None if not available
+        """
+        if not self._connected:
+            return None
+        return self.candle_manager.get_current_price(asset, timeframe)
 
-            self.api.candle_generated_check[str(ACTIVE)][int(size)] = {}
-            data = {"name": "candle-generated",
-                    "params": {
-                        "routingFilters": {
-                            "active_id": str(options_assests.UNDERLYING_ASSESTS[ACTIVE]),
-                            "size": int(size)
-                        }
-                    }
-                    }
+    def get_last_candles(self, asset: str, timeframe: int, count: int = 10) -> List:
+        """
+        Get last N completed candles for an asset/timeframe.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD")
+            timeframe: Timeframe in seconds (60, 300, etc.)
+            count: Number of candles to return
+            
+        Returns:
+            List of Candle objects (most recent last)
+        """
+        if not self._connected:
+            return []
+        return self.candle_manager.get_candles(asset, timeframe, count)
 
-            self.websocket.send_message("unsubscribeMessage", data)
-            time.sleep(.5)
+    def get_latest_candle(self, asset: str, timeframe: int) -> Optional[dict]:
+        """
+        Get the most recent COMPLETED candle for an asset/timeframe.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD")
+            timeframe: Timeframe in seconds (60, 300, etc.)
+            
+        Returns:
+            Candle object or None
+        """
+        if not self._connected:
+            return None
+        return self.candle_manager.get_latest_candle(asset, timeframe)
+
+    def get_current_candle(self, asset: str, timeframe: int) -> Optional[dict]:
+        """
+        Get the LIVE (in-progress) candle for an asset/timeframe.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD")
+            timeframe: Timeframe in seconds (60, 300, etc.)
+            
+        Returns:
+            Raw candle dict from IQ Option (live, still updating)
+        """
+        if not self._connected:
+            return None
+        return self.candle_manager.get_current_candle(asset, timeframe)
+
+    def is_subscribed_to_candles(self, asset: str, timeframe: int) -> bool:
+        """
+        Check if actively subscribed to candle stream for an asset/timeframe.
+        
+        Args:
+            asset: Asset name (e.g., "EURUSD")
+            timeframe: Timeframe in seconds (60, 300, etc.)
+            
+        Returns:
+            True if subscribed, False otherwise
+        """
+        if not self._connected:
+            return False
+        return self.candle_manager.is_subscribed(asset, timeframe)
+
+    def on_new_candle(self, callback: Callable):
+        """
+        Register callback for when a new candle completes.
+        
+        Args:
+            callback: Function that accepts a Candle object
+            
+        Example:
+            def my_callback(candle):
+                print(f"New candle: {candle.asset_name} close: {candle.close}")
+            
+            client.on_new_candle(my_callback)
+        """
+        self.candle_manager.on_new_candle(callback)
+
+    def on_live_candle_update(self, callback: Callable):
+        """
+        Register callback for live candle price updates.
+        
+        Args:
+            callback: Function that accepts (asset_name, timeframe, candle_dict)
+            
+        Example:
+            def on_update(asset, tf, candle):
+                print(f"Live update: {asset} price: {candle['close']}")
+            
+            client.on_live_candle_update(on_update)
+        """
+        self.candle_manager.on_live_candle_update(callback)

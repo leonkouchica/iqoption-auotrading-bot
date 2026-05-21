@@ -45,7 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime, date
 from typing import Dict, Optional, Tuple
 from tradingconfig import TradingConfig
-from iqoptionapi.iqclient import IQOptionClient
+from iqoptionapi.iqapi import IQOptionClient
 from iqoptionapi.models import Direction, OptionsTradeParams, OptionType
 
 

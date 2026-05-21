@@ -4,7 +4,7 @@ import pandas as pd
 import mplfinance as mpf
 from typing import List, Dict
 from iqoptionapi.utilities import get_asset_id
-from iqoptionapi.iqclient import InstrumentType
+from iqoptionapi.iqapi import InstrumentType
 
 logger = logging.getLogger(__name__)
 

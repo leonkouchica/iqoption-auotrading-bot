@@ -1,4 +1,3 @@
-import sys
 import time
 import json
 import logging
@@ -216,7 +215,7 @@ class AccountManager:
             'version': '4.0',
             'body': {
                 'amount': amount,
-                'user_balance_id': self.message_handler.profile_msg['msg']['balances'][-1]['id']
+                'user_balance_id': appstate.profile_msg['msg']['balances'][-1]['id']
             }
         }
         self.ws_manager.send_message('sendMessage', msg)
