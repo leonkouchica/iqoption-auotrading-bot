@@ -15,6 +15,29 @@ from tutorial2 import RiskManager
 logger = logging.getLogger("AutoTrading Bot")
 
 
+
+
+def generate_signal_from_live_candle(candle) -> Direction:
+    """
+    Generate trading signal from a single completed live candle.
+    Replace this with your actual strategy logic.
+    """
+    # Example simple strategy:
+    # If candle closes higher than it opened → CALL
+    # If closes lower than opened → PUT
+    
+    if candle.close > candle.open:
+        return Direction.CALL
+    elif candle.close < candle.open:
+        return Direction.PUT
+    else:
+        return Direction.INDECISION
+    
+    # You can also access:
+    # candle.high, candle.low, candle.volume, candle.timestamp
+
+
+
 class TradingBot:
     def __init__(self):
         self.config          = TradingConfig()
@@ -36,6 +59,38 @@ class TradingBot:
         except Exception as e:
             logger.error(f"Connection failed: {e}")
         return False
+
+    # Add this method to TradingBot class
+    def subscribe_to_live_candles(self) -> bool:
+        """Subscribe to real-time candle updates"""
+        logger.info(f"📡 Subscribing to live candles for {self.config.asset}...")
+        
+        # Subscribe to 1-minute candles (or use self.config.expiry_minutes * 60 for timeframe)
+        success = self.client.start_candle_stream(
+            asset="EURUSD-op",
+            candle_size=60  # 1-minute candles
+        )
+        
+        if success:
+            # Register callback for new candles
+            self.client.on_new_candle(self.on_new_candle_signal)
+            logger.info("✅ Live candle subscription active")
+        return success
+
+    def on_new_candle_signal(self, candle):
+        """
+        Callback when a new candle closes.
+        This is where you generate signals from LIVE data.
+        """
+        # Store the candle for your strategy
+        self.latest_candle = candle
+        
+        # Your signal logic here
+        signal = generate_signal_from_live_candle(candle)
+        
+        if signal != Direction.INDECISION:
+            logger.info(f"🎯 Signal generated from live candle: {signal.value}")
+            self.execute_trade(signal)
 
     def execute_trade(self, direction: Direction) -> Optional[Dict]:
         position_size  = self.risk_manager.calculate_position_size()
@@ -87,7 +142,13 @@ class TradingBot:
         logger.info(f"   💵 Balance : ${self.risk_manager.starting_balance:.2f}")
         logger.info(f"   📁 Output  : {self.analytics_config.output_dir}/")
         self.config.display()
-        logger.info("🤖 Bot running  |  Press Ctrl+C to stop")
+
+        # NEW: Subscribe to live candles
+        if not self.subscribe_to_live_candles():
+            logger.error("Failed to subscribe to live candles. Exiting...")
+            return
+        
+        logger.info("🤖 Bot running with LIVE candles | Press Ctrl+C to stop")
         logger.info("=" * 60)
 
         try:
@@ -102,16 +163,16 @@ class TradingBot:
                     time.sleep(30)
                     continue
 
-                wait_for_minute_start(self.client)
-                signal = bar_by_bar_signal(self.client, self.config.asset)
+                # wait_for_minute_start(self.client)
+                # signal = bar_by_bar_signal(self.client, self.config.asset)
 
-                if signal == Direction.INDECISION:
-                    time.sleep(55)
-                    continue
+                # if signal == Direction.INDECISION:
+                #     time.sleep(55)
+                #     continue
 
-                self.execute_trade(signal)
-                self.risk_manager.print_status()
-                time.sleep(2)
+                # self.execute_trade(signal)
+                # self.risk_manager.print_status()
+                time.sleep(1)
 
         except KeyboardInterrupt:
             print("\n\n🛑 Trading stopped by user")
