@@ -18,7 +18,7 @@ class TradingConfig:
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
     asset: str = "USDNGN-OTC"                  # Trading asset
-    expiry_minutes: int = 1                      # Trade expiry (1, 2, 5, 10, 15 minutes)
+    expiry_minutes: int = 2                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     
     # ═══════════════════════════════════════════════════════════════════════
