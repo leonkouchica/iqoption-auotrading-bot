@@ -182,7 +182,7 @@ class TradeManager:
             expiration = get_expiry_timestamp(self.message_handler.server_time, expiry)
 
             if expiry < 5:
-                option_type_id = 3 # turbo (exp > 5mins )
+                option_type_id = 3 # turbo (exp < 5mins)
             else:
                 option_type_id = 1 # binary ( exp > 5 mins )
 
@@ -199,12 +199,66 @@ class TradeManager:
                     "version": "1.0"
                     }
             
+            # ─── Snapshot existing order IDs before sending ───
+            known_ids = set(self.message_handler.orders_confirmation.keys())
+            
             request_id = self.ws_manager.send_message("sendMessage", msg)
-            return self.wait_for_order_confirmation(request_id, expiry)
+            
+            # ─── Wait for a NEW order ID to appear ───
+            return self.wait_for_new_order(known_ids, request_id, expiry)
             
         except Exception as e:
             logger.error(f"Binary trade failed: {e}")
             return False, str(e)
+
+    def wait_for_new_order(self, known_ids: set, request_id: str, expiry: int, timeout: int = 22):
+        """
+        Wait for a NEW order ID to appear in orders_confirmation.
+        Since IQ Option doesn't echo our request_id, we detect new trades
+        by comparing before/after sets of known order IDs.
+        
+        Args:
+            known_ids: Set of order IDs that existed before the trade
+            request_id: The request_id we sent (fallback matching)
+            expiry: Expiry in minutes
+            timeout: Max wait time in seconds
+            
+        Returns:
+            tuple: (success: bool, order_id: int or error_message: str)
+        """
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            current_ids = set(self.message_handler.orders_confirmation.keys())
+            new_ids = current_ids - known_ids
+            
+            # Filter to only integer order IDs (not request_id strings)
+            for oid in new_ids:
+                if isinstance(oid, int) and oid > 0:
+                    expires_in = get_remaining_secs(self.message_handler.server_time, expiry)
+                    logger.info(f'Order Placed, ID: {oid}, Expires in: {expires_in} Seconds')
+                    return True, oid
+            
+            # Also check if our request_id was matched (fallback)
+            result = self.message_handler.orders_confirmation.get(request_id)
+            if result is not None and isinstance(result, int):
+                expires_in = get_remaining_secs(self.message_handler.server_time, expiry)
+                logger.info(f'Order Placed (req match), ID: {result}, Expires in: {expires_in} Seconds')
+                return True, result
+                
+            time.sleep(0.1)
+        
+        # Final check after timeout
+        time.sleep(1)
+        current_ids = set(self.message_handler.orders_confirmation.keys())
+        new_ids = current_ids - known_ids
+        for oid in new_ids:
+            if isinstance(oid, int) and oid > 0:
+                logger.info(f'Order Placed (late), ID: {oid}')
+                return True, oid
+                
+        logger.error(f"Order Confirmation timed out after {timeout} seconds")
+        return False, f"Timed out after {timeout}s"
 
     def get_trade_outcome(self, order_id: int, expiry:int=1):
         """
