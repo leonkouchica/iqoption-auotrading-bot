@@ -108,7 +108,10 @@ class MessageHandler:
         if handler:
             handler(message)
         else:
-            logger.debug(f"Unhandled message name: {message_name}")
+            logger.info(f"⚠️  UNHANDLED message: '{message_name}' | keys: {list(message.keys())[:5]}")
+            # Dump msg keys too for debugging
+            if 'msg' in message:
+                logger.info(f"   msg keys: {list(message['msg'].keys())[:10] if isinstance(message['msg'], dict) else type(message['msg'])}")
     
     def _handle_server_time(self, message):
         """
@@ -238,15 +241,15 @@ class MessageHandler:
         msg = message.get("msg", {})
         request_id = message.get("request_id")
         
-        # Debug: log full message to understand binary trade confirmation format
-        logger.info(f"DEBUG option-opened: request_id={request_id}, msg keys={list(msg.keys())[:10]}")
+        # IQ Option uses 'option_id' for binary, 'id' for digital
+        order_id = msg.get("option_id") or msg.get("id")
         
-        if msg.get("id") is not None:  # Successful placement - store the option ID
+        if order_id is not None:  # Successful placement - store the option ID
             if request_id:
-                self.orders_confirmation[request_id] = msg.get("id")
+                self.orders_confirmation[request_id] = order_id
             # Also store by the order ID itself for outcome matching
-            self.orders_confirmation[int(msg["id"])] = msg.get("id")
-            logger.info(f"Option opened: ID={msg['id']}, request_id={request_id}")
+            self.orders_confirmation[int(order_id)] = order_id
+            logger.info(f"✅ Option opened: ID={order_id}, request_id={request_id}")
         elif msg.get("message"):  # Failed placement - store the error message
             if request_id:
                 self.orders_confirmation[request_id] = msg.get("message")
@@ -285,6 +288,8 @@ class MessageHandler:
                 self.trade_outcome_checker.check_trade_outcome(msg)
         else:
             logger.debug(f"option-closed missing id: {list(msg.keys())[:5]}")
+
+    def _handle_socket_option_opened(self, message):
         """
         Handle socket-option-opened messages (binary option confirmation).
         
@@ -306,11 +311,13 @@ class MessageHandler:
                 self.orders_confirmation[request_id] = order_id
             # Also store by order_id for outcome lookup
             self.orders_confirmation[int(order_id)] = order_id
-            logger.debug(f"Binary option opened: ID={order_id}, request_id={request_id}")
+            logger.info(f"✅ Binary option opened: ID={order_id}, request_id={request_id}")
         elif msg.get("message"):
             if request_id:
                 self.orders_confirmation[request_id] = msg.get("message")
             logger.error(f"Binary option failed: {msg.get('message')}")
+        else:
+            logger.info(f"Unknown socket-option-opened format: keys={list(msg.keys())[:10]}")
 
     def _handle_candles_generated(self, message: dict):
         """

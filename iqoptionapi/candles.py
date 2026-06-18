@@ -425,7 +425,7 @@ class CandleSubscriptionManager:
     # Subscription Methods
     # -----------------------------------------------------------------
     
-    def subscribe(self, asset: str, timeframe: int = 60, timeout: int = 20) -> bool:
+    def subscribe(self, asset: str, timeframe: int = 60, timeout: int = 30) -> bool:
         """Subscribe to real-time candles."""
         if not self.websocket:
             logger.error("WebSocket not set")

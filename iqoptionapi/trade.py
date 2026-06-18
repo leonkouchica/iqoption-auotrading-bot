@@ -71,7 +71,7 @@ class TradeManager:
         
         Args:
             request_id: Unique request identifier to track
-            timeout: Maximum wait time in seconds (default: 10)
+            timeout: Maximum wait time in seconds (default: 20)
             
         Returns:
             tuple: (success: bool, order_id: int or error_message: str)
@@ -92,6 +92,17 @@ class TradeManager:
                     logger.error(f'Order Executed Failed, Reason: !!! {result} !!!')
                     return False, result
             time.sleep(0.1)
+        
+        # ─── Final check after timeout (race condition guard) ───
+        result = self.message_handler.orders_confirmation.get(request_id)
+        if result is not None:
+            if isinstance(result, int):
+                expires_in = get_remaining_secs(self.message_handler.server_time, expiry)
+                logger.info(f'Order Placed (late confirm), ID: {result}, Expires in: {expires_in} Seconds')
+                return True, result
+            else:
+                logger.error(f'Order Failed (late confirm), Reason: {result}')
+                return False, result
                 
         logger.error(f"Order Confirmation timed out after {timeout} seconds")
         return False, f"Timed out after {timeout}s"
