@@ -238,18 +238,21 @@ class MessageHandler:
         msg = message.get("msg", {})
         request_id = message.get("request_id")
         
+        # Debug: log full message to understand binary trade confirmation format
+        logger.info(f"DEBUG option-opened: request_id={request_id}, msg keys={list(msg.keys())[:10]}")
+        
         if msg.get("id") is not None:  # Successful placement - store the option ID
             if request_id:
                 self.orders_confirmation[request_id] = msg.get("id")
             # Also store by the order ID itself for outcome matching
             self.orders_confirmation[int(msg["id"])] = msg.get("id")
-            logger.debug(f"Option opened: ID={msg['id']}, request_id={request_id}")
+            logger.info(f"Option opened: ID={msg['id']}, request_id={request_id}")
         elif msg.get("message"):  # Failed placement - store the error message
             if request_id:
                 self.orders_confirmation[request_id] = msg.get("message")
             logger.warning(f"Option open failed: {msg.get('message')}")
         else:
-            logger.debug(f"Unrecognized option-opened message format: {list(msg.keys())}")
+            logger.info(f"Unknown option-opened format: {list(msg.keys())}")
 
         # self._save_data(message['msg'], 'positions_opened')
 
@@ -273,19 +276,15 @@ class MessageHandler:
 
     def _handle_socket_option_closed(self, message):
         """
-        Handle position status change messages.
-        
-        Updates position information and saves the latest position data to file.
-        Uses the first order ID from the raw event as the key for tracking.
-        
-        Args:
-            message (dict): Position change message containing updated position status
+        Handle socket-option-closed messages (binary option outcome).
         """
-
-        self.position_info[int(message["msg"]["id"])] = \
-            self.trade_outcome_checker.check_trade_outcome(message['msg'])
-
-    def _handle_socket_option_opened(self, message):
+        msg = message.get("msg", {})
+        order_id = msg.get("id")
+        if order_id is not None:
+            self.position_info[int(order_id)] = \
+                self.trade_outcome_checker.check_trade_outcome(msg)
+        else:
+            logger.debug(f"option-closed missing id: {list(msg.keys())[:5]}")
         """
         Handle socket-option-opened messages (binary option confirmation).
         

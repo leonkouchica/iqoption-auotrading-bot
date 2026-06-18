@@ -45,6 +45,10 @@ class TradingBot:
         self.risk_manager    = RiskManager(self.config)
         self.analyzer        = TradeAnalyzer(self.analytics_config)
         self.client          = None
+        
+        # ─── Guard against duplicate trades ───
+        self._last_trade_candle_id = None     # Track last candle we traded on
+        self._last_trade_time = 0             # Timestamp of last trade
 
     def connect(self) -> bool:
         logger.info("🔌 Connecting to IQOption...")
@@ -82,6 +86,18 @@ class TradingBot:
         Callback when a new candle closes.
         This is where you generate signals from LIVE data.
         """
+        # ─── GUARD: Prevent multiple trades on the same candle ───
+        candle_id = getattr(candle, 'id', getattr(candle, 'timestamp', None))
+        if candle_id is not None and candle_id == self._last_trade_candle_id:
+            logger.debug(f"⏭️  Skipping duplicate signal for candle {candle_id}")
+            return
+        
+        # ─── GUARD: Prevent trading too fast (max 1 trade per 55s) ───
+        now = time.time()
+        if now - self._last_trade_time < 55:
+            logger.debug(f"⏭️  Skipping signal — too soon since last trade ({now - self._last_trade_time:.0f}s)")
+            return
+        
         # Store the candle for your strategy
         self.latest_candle = candle
         
@@ -91,6 +107,8 @@ class TradingBot:
         if signal != Direction.INDECISION:
             logger.info(f"🎯 Signal generated from live candle: {signal.value}")
             self.execute_trade(signal)
+            self._last_trade_candle_id = candle_id
+            self._last_trade_time = time.time()
 
     def execute_trade(self, direction: Direction) -> Optional[Dict]:
         position_size  = self.risk_manager.calculate_position_size()
