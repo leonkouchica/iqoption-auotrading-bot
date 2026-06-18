@@ -94,8 +94,11 @@ class MessageHandler:
             "digital-option-placed":self._handle_option_opened,
             "position-changed":self._handle_position_changed,
             "option":self._handle_option_opened,
+            "option-opened":self._handle_option_opened,
 
             "socket-option-closed":self._handle_socket_option_closed,
+            "option-closed":self._handle_socket_option_closed,
+            "socket-option-opened":self._handle_socket_option_opened,
             "candle-generated":self._handle_candles_generated,
             # "candle-generated": self._on_candle,
         }
@@ -224,7 +227,7 @@ class MessageHandler:
 
     def _handle_option_opened(self, message):
         """
-        Handle digital option placement confirmation messages.
+        Handle option placement confirmation messages (binary & digital).
         
         Stores the option ID or error message based on the placement result.
         Uses request_id as the key to track placement requests.
@@ -232,10 +235,21 @@ class MessageHandler:
         Args:
             message (dict): Placement confirmation containing either option ID or error message
         """
-        if message["msg"].get("id") != None: # Successful placement - store the option ID
-            self.orders_confirmation[message["request_id"]] = message["msg"].get("id")
-        else: # Failed placement - store the error message
-            self.orders_confirmation[message["request_id"]] = message["msg"].get("message")
+        msg = message.get("msg", {})
+        request_id = message.get("request_id")
+        
+        if msg.get("id") is not None:  # Successful placement - store the option ID
+            if request_id:
+                self.orders_confirmation[request_id] = msg.get("id")
+            # Also store by the order ID itself for outcome matching
+            self.orders_confirmation[int(msg["id"])] = msg.get("id")
+            logger.debug(f"Option opened: ID={msg['id']}, request_id={request_id}")
+        elif msg.get("message"):  # Failed placement - store the error message
+            if request_id:
+                self.orders_confirmation[request_id] = msg.get("message")
+            logger.warning(f"Option open failed: {msg.get('message')}")
+        else:
+            logger.debug(f"Unrecognized option-opened message format: {list(msg.keys())}")
 
         # self._save_data(message['msg'], 'positions_opened')
 
@@ -270,6 +284,34 @@ class MessageHandler:
 
         self.position_info[int(message["msg"]["id"])] = \
             self.trade_outcome_checker.check_trade_outcome(message['msg'])
+
+    def _handle_socket_option_opened(self, message):
+        """
+        Handle socket-option-opened messages (binary option confirmation).
+        
+        Stores the option ID or error message based on the placement result.
+        Uses request_id or id as the key to track placement requests.
+        
+        Args:
+            message (dict): Socket option opened message containing option ID or error
+        """
+        msg = message.get("msg", {})
+        
+        # Try to get order ID from different possible locations
+        order_id = msg.get("id")
+        request_id = message.get("request_id")
+        
+        if order_id is not None:
+            # Use request_id if available, otherwise use order_id as key
+            if request_id:
+                self.orders_confirmation[request_id] = order_id
+            # Also store by order_id for outcome lookup
+            self.orders_confirmation[int(order_id)] = order_id
+            logger.debug(f"Binary option opened: ID={order_id}, request_id={request_id}")
+        elif msg.get("message"):
+            if request_id:
+                self.orders_confirmation[request_id] = msg.get("message")
+            logger.error(f"Binary option failed: {msg.get('message')}")
 
     def _handle_candles_generated(self, message: dict):
         """

@@ -17,7 +17,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    asset: str = "EURUSD-OTC"                    # Trading asset
+    asset: str = "EURUSD"                       # Trading asset
     expiry_minutes: int = 1                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     

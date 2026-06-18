@@ -120,6 +120,9 @@ class TradeOutcomeChecker:
             outcome = self._process_binary_option_outcome(trade_message)
         elif trade_type == OptionType.DIGITAL_OPTION:
             outcome = self._process_digital_option_outcome(trade_message)
+        else:
+            # Unknown trade type — skip silently
+            return None
 
         # Store the processed trade
         self.processed_trades.append(outcome)
