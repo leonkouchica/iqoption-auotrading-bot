@@ -104,6 +104,8 @@ class MessageHandler:
         handler = handlers.get(message_name)
         if handler:
             handler(message)
+        else:
+            logger.debug(f"Unhandled message name: {message_name}")
     
     def _handle_server_time(self, message):
         """

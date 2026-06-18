@@ -67,7 +67,7 @@ class TradingBot:
         
         # Subscribe to 1-minute candles (or use self.config.expiry_minutes * 60 for timeframe)
         success = self.client.start_candle_stream(
-            asset="EURUSD-op",
+            asset=self.config.asset,
             candle_size=60  # 1-minute candles
         )
         
@@ -96,13 +96,19 @@ class TradingBot:
         position_size  = self.risk_manager.calculate_position_size()
         balance_before = self.risk_manager.current_balance
 
-        success, order_id = self.client.execute_options_trade(OptionsTradeParams(
+        result = self.client.execute_options_trade(OptionsTradeParams(
             asset=self.config.asset,
             expiry=self.config.expiry_minutes,
             amount=position_size,
             direction=direction,
             option_type=self.config.option_type,
         ))
+
+        if result is None:
+            logger.error("❌ Trade failed: no response from API")
+            return None
+
+        success, order_id = result
 
         if not success or not order_id:
             logger.error(f"❌ Trade failed: {order_id}")

@@ -65,7 +65,7 @@ class TradeManager:
             # Catch any unexpected errors
             logger.error(f"Unexpected error during trade execution: {e}", exc_info=True)
 
-    def wait_for_order_confirmation(self, request_id:int, expiry:int, timeout:int=10):
+    def wait_for_order_confirmation(self, request_id:int, expiry:int, timeout:int=20):
         """
         Wait for trade order confirmation from the server.
         
@@ -94,6 +94,7 @@ class TradeManager:
             time.sleep(0.1)
                 
         logger.error(f"Order Confirmation timed out after {timeout} seconds")
+        return False, f"Timed out after {timeout}s"
 
 
     def prepare_digital_trade_payload(self, asset: str, amount: float, 
