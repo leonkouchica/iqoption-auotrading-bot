@@ -17,37 +17,88 @@ from tutorial2 import RiskManager
 
 logger = logging.getLogger("AutoTrading Bot")
 
+# Module-level bot reference for the signal generator
+_bot: 'TradingBot' = None
 
 
 
 def generate_signal_from_live_candle(candle) -> Direction:
     """
-    Generate trading signal from a single completed live candle.
-    Replace this with your actual strategy logic.
-    """
-    # Example simple strategy:
-    # If candle closes higher than it opened → CALL
-    # If closes lower than opened → PUT
+    Multi-candle analysis for better signal quality.
     
-    if candle.close > candle.open:
-        return Direction.CALL
-    elif candle.close < candle.open:
-        return Direction.PUT
-    else:
+    Analyzes the last 3 completed candles for:
+    - Trend direction (consecutive candles going same way?)
+    - Momentum (size of latest candle body vs average)
+    - Rejection patterns (long wicks = potential reversal)
+    
+    Returns Direction.CALL, Direction.PUT, or Direction.INDECISION.
+    """
+    cm = _bot.candle_manager if _bot else None
+    
+    if cm is None:
+        if candle.close > candle.open: return Direction.CALL
+        elif candle.close < candle.open: return Direction.PUT
         return Direction.INDECISION
     
-    # You can also access:
-    # candle.high, candle.low, candle.volume, candle.timestamp
+    candles = cm.get_candles(_bot.config.asset, 60, count=3)
+    
+    if len(candles) < 3:
+        logger.info(f"📊 Building history ({len(candles)}/3 candles)")
+        return Direction.CALL if candle.close > candle.open else Direction.PUT if candle.close < candle.open else Direction.INDECISION
+    
+    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
+    
+    def body(c):    return abs(c.close - c.open)
+    def dir_sign(c): return 1 if c.close > c.open else -1 if c.close < c.open else 0
+    def upper_w(c): return c.high - max(c.open, c.close)
+    def lower_w(c): return min(c.open, c.close) - c.low
+    
+    d1, d2, d3 = dir_sign(c1), dir_sign(c2), dir_sign(c3)
+    trend = d1 + d2 + d3
+    avg_body = (body(c1) + body(c2) + body(c3)) / 3
+    momentum = body(c3) / avg_body if avg_body > 0 else 1.0
+    rejection_up = upper_w(c3) > body(c3) * 0.8 and d3 <= 0
+    rejection_down = lower_w(c3) > body(c3) * 0.8 and d3 >= 0
+    
+    logger.info(f"📊 Trend={trend:+d} | Mom={momentum:.1f}x | Body={body(c3):.6f} | U-Wick={upper_w(c3):.6f} | L-Wick={lower_w(c3):.6f}")
+    
+    # ─── Strong trend + momentum + no rejection ───
+    if trend >= 2 and momentum >= 0.5 and not rejection_up:
+        logger.info("🟢 STRONG CALL")
+        return Direction.CALL
+    if trend <= -2 and momentum >= 0.5 and not rejection_down:
+        logger.info("🔴 STRONG PUT")
+        return Direction.PUT
+    
+    # ─── Confirmed trend (all 3 same direction) ───
+    if trend == 3 and momentum >= 0.3:
+        logger.info("🟢 CONFIRMED CALL (3 green)")
+        return Direction.CALL
+    if trend == -3 and momentum >= 0.3:
+        logger.info("🔴 CONFIRMED PUT (3 red)")
+        return Direction.PUT
+    
+    # ─── Rejection alert ───
+    if rejection_up:
+        logger.info("⚠️  Rejection (long upper wick) — skipping")
+    if rejection_down:
+        logger.info("⚠️  Rejection (long lower wick) — skipping")
+    
+    logger.info(f"⏭️  SKIP | Weak signal (trend={trend:+d}, mom={momentum:.1f}x)")
+    return Direction.INDECISION
 
 
 
 class TradingBot:
     def __init__(self):
+        global _bot
+        _bot = self
         self.config          = TradingConfig()
         self.analytics_config = AnalyticsConfig()
         self.risk_manager    = RiskManager(self.config)
         self.analyzer        = TradeAnalyzer(self.analytics_config)
         self.client          = None
+        self.candle_manager   = None
         self._stop_flag      = False
         
         # ─── Guard against duplicate trades ───
@@ -106,13 +157,15 @@ class TradingBot:
         """Subscribe to real-time candle updates"""
         logger.info(f"📡 Subscribing to live candles for {self.config.asset}...")
         
-        # Subscribe to 1-minute candles (or use self.config.expiry_minutes * 60 for timeframe)
+        # Use 60s candles for multi-candle analysis
         success = self.client.start_candle_stream(
             asset=self.config.asset,
-            candle_size=60  # 1-minute candles
+            candle_size=60  # 1-minute candles for analysis
         )
         
         if success:
+            # Store candle_manager reference for the signal generator
+            self.candle_manager = self.client.candle_manager
             # Register callback for new candles
             self.client.on_new_candle(self.on_new_candle_signal)
             logger.info("✅ Live candle subscription active")

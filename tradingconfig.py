@@ -51,8 +51,8 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - TRADING HOURS
     # ═══════════════════════════════════════════════════════════════════════
-    trading_start_hour: int = 0                  # 24-hour format (0-23)
-    trading_end_hour: int = 23                   # 24-hour format (0-23)
+    trading_start_hour: int = 7                  # 24-hour format (7 AM UTC = European open)
+    trading_end_hour: int = 16                   # 24-hour format (4 PM UTC = US close)
     
     def __post_init__(self):
         """Validate all configuration settings"""
