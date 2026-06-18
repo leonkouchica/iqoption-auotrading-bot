@@ -49,6 +49,7 @@ class TradingBot:
         # ─── Guard against duplicate trades ───
         self._last_trade_candle_id = None     # Track last candle we traded on
         self._last_trade_time = 0             # Timestamp of last trade
+        self._trading_active = False          # Lock: only 1 trade at a time
 
     def connect(self) -> bool:
         logger.info("🔌 Connecting to IQOption...")
@@ -86,16 +87,21 @@ class TradingBot:
         Callback when a new candle closes.
         This is where you generate signals from LIVE data.
         """
+        # ─── GUARD: Only 1 trade at a time — skip if already trading ───
+        if self._trading_active:
+            logger.info("⏭️  Skipping signal — trade already in progress")
+            return
+        
         # ─── GUARD: Prevent multiple trades on the same candle ───
         candle_id = getattr(candle, 'id', getattr(candle, 'timestamp', None))
         if candle_id is not None and candle_id == self._last_trade_candle_id:
-            logger.debug(f"⏭️  Skipping duplicate signal for candle {candle_id}")
+            logger.info(f"⏭️  Skipping duplicate signal for candle {candle_id}")
             return
         
         # ─── GUARD: Prevent trading too fast (max 1 trade per 55s) ───
         now = time.time()
         if now - self._last_trade_time < 55:
-            logger.debug(f"⏭️  Skipping signal — too soon since last trade ({now - self._last_trade_time:.0f}s)")
+            logger.info(f"⏭️  Skipping signal — too soon ({now - self._last_trade_time:.0f}s)")
             return
         
         # Store the candle for your strategy
@@ -106,8 +112,13 @@ class TradingBot:
         
         if signal != Direction.INDECISION:
             logger.info(f"🎯 Signal generated from live candle: {signal.value}")
-            self.execute_trade(signal)
+            self._trading_active = True
             self._last_trade_candle_id = candle_id
+            self._last_trade_time = time.time()
+            try:
+                self.execute_trade(signal)
+            finally:
+                self._trading_active = False
             self._last_trade_time = time.time()
 
     def execute_trade(self, direction: Direction) -> Optional[Dict]:
