@@ -1,4 +1,7 @@
 import time
+import sys
+import atexit
+import signal
 import logging
 from datetime import datetime
 from typing import Dict, Optional
@@ -45,9 +48,42 @@ class TradingBot:
         self.risk_manager    = RiskManager(self.config)
         self.analyzer        = TradeAnalyzer(self.analytics_config)
         self.client          = None
+        self._stop_flag      = False
         
         # ─── Guard against duplicate trades ───
         self._last_trade_candle_id = None     # Track last candle we traded on
+        self._last_trade_time = 0             # Timestamp of last trade
+        self._trading_active = False          # Lock: only 1 trade at a time
+        
+        # ─── Ensure clean shutdown on ANY exit ───
+        atexit.register(self._force_shutdown)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        signal.signal(signal.SIGTERM, self._signal_handler)
+    
+    def _signal_handler(self, signum, frame):
+        """Handle Ctrl+C and termination signals."""
+        logger.info(f"🛑 Received signal {signum}, shutting down...")
+        self._stop_flag = True
+        self._force_shutdown()
+        sys.exit(0)
+    
+    def _force_shutdown(self):
+        """Force cleanup — kill WebSocket, disconnect, ensure process dies."""
+        try:
+            if self.client and self.client._connected:
+                # Unsubscribe all candles first
+                if hasattr(self.client, 'candle_manager'):
+                    self.client.candle_manager.unsubscribe_all()
+                self.client.disconnect()
+        except Exception:
+            pass
+        finally:
+            # Force-kill the websocket thread
+            if self.client and hasattr(self.client, 'websocket'):
+                try:
+                    self.client.websocket.close()
+                except Exception:
+                    pass
         self._last_trade_time = 0             # Timestamp of last trade
         self._trading_active = False          # Lock: only 1 trade at a time
 
@@ -211,12 +247,16 @@ class TradingBot:
 
         except KeyboardInterrupt:
             print("\n\n🛑 Trading stopped by user")
+            self._force_shutdown()
+            sys.exit(0)
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
+            self._force_shutdown()
         finally:
             self._generate_report()
-            self.client.disconnect()
+            self._force_shutdown()
             logger.info("🔌 Disconnected")
+            sys.exit(0)
 
     def _generate_report(self):
         print("\n" + "=" * 60)
