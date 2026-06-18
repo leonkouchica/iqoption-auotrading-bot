@@ -177,14 +177,14 @@ class TradeManager:
             raise TradeExecutionError("No active account available")
         
     def _place_binary_options_trade(self, asset:str, amount:float, direction:str, expiry:int=1):
-        """Place a binary/turbo option trade."""
+        """Place a binary/turbo option trade — returns immediately, no confirmation wait."""
         try:
             expiration = get_expiry_timestamp(self.message_handler.server_time, expiry)
 
             if expiry < 5:
-                option_type_id = 3 # turbo (exp < 5mins)
+                option_type_id = 3  # turbo
             else:
-                option_type_id = 1 # binary ( exp > 5 mins )
+                option_type_id = 1  # binary
 
             msg = {
                     "body":{
@@ -199,13 +199,9 @@ class TradeManager:
                     "version": "1.0"
                     }
             
-            # ─── Snapshot existing order IDs before sending ───
-            known_ids = set(self.message_handler.orders_confirmation.keys())
-            
             request_id = self.ws_manager.send_message("sendMessage", msg)
-            
-            # ─── Wait for a NEW order ID to appear ───
-            return self.wait_for_new_order(known_ids, request_id, expiry)
+            logger.info(f'Binary trade sent (request_id={request_id}), awaiting IQ Option...')
+            return True, request_id  # Return immediately — PnL tracked via balance change
             
         except Exception as e:
             logger.error(f"Binary trade failed: {e}")
@@ -249,7 +245,7 @@ class TradeManager:
             time.sleep(0.1)
         
         # Final check after timeout
-        time.sleep(1)
+        time.sleep(3)
         current_ids = set(self.message_handler.orders_confirmation.keys())
         new_ids = current_ids - known_ids
         for oid in new_ids:

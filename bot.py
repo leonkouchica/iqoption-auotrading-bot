@@ -161,6 +161,7 @@ class TradingBot:
         position_size  = self.risk_manager.calculate_position_size()
         balance_before = self.risk_manager.current_balance
 
+        # Place the trade — don't block waiting for confirmation
         result = self.client.execute_options_trade(OptionsTradeParams(
             asset=self.config.asset,
             expiry=self.config.expiry_minutes,
@@ -176,18 +177,29 @@ class TradingBot:
         success, order_id = result
 
         if not success or not order_id:
-            logger.error(f"❌ Trade failed: {order_id}")
-            return None
-
-        success, outcome_data, pnl = self.client.get_trade_outcome(
-            order_id, self.config.expiry_minutes
-        )
-
-        if success and outcome_data is not None:
-            balance_after = balance_before + pnl
+            # Order confirmation timed out but trade was likely placed
+            # Check balance change directly
+            logger.warning(f"⚠️  Confirmation timeout, but trade likely placed. Waiting for outcome...")
+        
+        # Wait for trade expiry + buffer
+        wait_seconds = self.config.expiry_minutes * 60 + 5
+        logger.info(f"⏳ Waiting {wait_seconds}s for trade outcome...")
+        time.sleep(wait_seconds)
+        
+        # Get latest balance from cached state (avoids WebSocket deadlock)
+        try:
+            new_balance = self.client.appstate.balance
+            if new_balance is None:
+                new_balance = balance_before
+        except Exception:
+            new_balance = balance_before
+        
+        pnl = round(new_balance - balance_before, 2)
+        
+        if new_balance != balance_before:
             self.risk_manager.record_trade(pnl)
             trade_data = {
-                'trade_id':       order_id,
+                'trade_id':       order_id or 'unknown',
                 'timestamp':      datetime.now().isoformat(),
                 'asset':          self.config.asset,
                 'direction':      direction.value,
@@ -195,11 +207,12 @@ class TradingBot:
                 'expiry_minutes': self.config.expiry_minutes,
                 'pnl':            pnl,
                 'balance_before': balance_before,
-                'balance_after':  balance_after,
+                'balance_after':  new_balance,
                 'outcome':        'win' if pnl > 0 else 'loss' if pnl < 0 else 'draw',
             }
             self.analyzer.add_trade(trade_data)
-            logger.info(f"📊 Trade Result: ${pnl:+.2f} | New Balance: ${balance_after:.2f}")
+            self.risk_manager.update_balance(new_balance)
+            logger.info(f"📊 Trade Result: ${pnl:+.2f} | New Balance: ${new_balance:.2f}")
             return trade_data
         return None
 

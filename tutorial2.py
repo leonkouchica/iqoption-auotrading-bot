@@ -122,8 +122,8 @@ class RiskManager:
         if self.daily_pnl <= -self.config.daily_loss_limit:
             return False, f"Daily loss limit reached: ${self.daily_pnl:.2f} (limit: -${self.config.daily_loss_limit})"
         
-        # Check max daily trades
-        if self.daily_trades >= self.config.max_daily_trades:
+        # Check max daily trades (0 = disabled)
+        if self.config.max_daily_trades > 0 and self.daily_trades >= self.config.max_daily_trades:
             return False, f"Max daily trades reached: {self.daily_trades}/{self.config.max_daily_trades}"
         
         # Check consecutive losses

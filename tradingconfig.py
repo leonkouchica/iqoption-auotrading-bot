@@ -24,7 +24,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TIMING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    duration_minutes: int = 3000                 # How long to run (0 = unlimited)
+    duration_minutes: int = 40                   # How long to run (till ~4pm)
     trade_seconds: Tuple[int, ...] = (0, 1, 2)   # Seconds of minute to trade
     
     # ═══════════════════════════════════════════════════════════════════════
@@ -32,14 +32,14 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     daily_profit_target: float = 150.0           # Stop when profit reaches this amount
     daily_loss_limit: float = 100.0              # Stop when loss reaches this amount
-    max_daily_trades: int = 20                   # Maximum trades per day, 0=disabled
+    max_daily_trades: int = 0                    # Maximum trades per day, 0=disabled
     
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - POSITION SIZING
     # ═══════════════════════════════════════════════════════════════════════
     risk_per_trade: float = 0.2                  # % of balance to risk per trade
     min_trade_amount: float = 5.0                # Minimum trade size
-    max_trade_amount: float = 100.0              # Maximum trade size
+    max_trade_amount: float = 45.0              # Maximum trade size
     
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - PROTECTION FEATURES
