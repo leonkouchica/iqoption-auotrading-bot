@@ -94,6 +94,8 @@ class TradeManager:
             time.sleep(0.1)
         
         # ─── Final check after timeout (race condition guard) ───
+        # Wait 2s for the WebSocket thread to process any pending messages
+        time.sleep(2)
         result = self.message_handler.orders_confirmation.get(request_id)
         if result is not None:
             if isinstance(result, int):
