@@ -17,7 +17,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    asset: str = "EURUSD"                       # Trading asset (most liquid forex pair)
+    asset: str = "BTCUSD"                    # Crypto — 24/7, always open for testing
     expiry_minutes: int = 5                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     
@@ -51,8 +51,8 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - TRADING HOURS
     # ═══════════════════════════════════════════════════════════════════════
-    trading_start_hour: int = 8                  # 24-hour format (8 AM UTC = London morning)
-    trading_end_hour: int = 17                   # 24-hour format (5 PM UTC = NY afternoon)
+    trading_start_hour: int = 0                  # 24/7 — crypto never closes
+    trading_end_hour: int = 23                   # 24/7 — crypto never closes
     
     def __post_init__(self):
         """Validate all configuration settings"""

@@ -145,6 +145,7 @@ class TradingBot:
         self._last_trade_time = 0             # Timestamp of last trade
         self._trading_active = False          # Lock: only 1 trade at a time
         self._last_signal_strength = None     # 'STRONG' or 'CONFIRMED' for position sizing
+        self._consecutive_failures = 0        # Track platform rejections (backoff)
         
         # ─── Ensure clean shutdown on ANY exit ───
         atexit.register(self._force_shutdown)
@@ -206,6 +207,8 @@ class TradingBot:
         if success:
             # Store candle_manager reference for the signal generator
             self.candle_manager = self.client.candle_manager
+            # Prevent burst trades on initial historical candle catch-up
+            self._last_trade_time = time.time()
             # Register callback for new candles
             self.client.on_new_candle(self.on_new_candle_signal)
             logger.info("✅ Live candle subscription active")
@@ -245,10 +248,23 @@ class TradingBot:
             self._last_trade_candle_id = candle_id
             self._last_trade_time = time.time()
             try:
-                self.execute_trade(signal)
+                result = self.execute_trade(signal)
+                if result is None:
+                    # Trade failed — backoff to prevent retry loop
+                    self._consecutive_failures += 1
+                    if self._consecutive_failures >= 5:
+                        logger.error("❌ 5 consecutive trade failures — market likely closed. Stopping.")
+                        self._stop_flag = True
+                    elif self._consecutive_failures >= 2:
+                        backoff = 120  # 2 minutes after 2+ failures
+                        logger.warning(f"⚠️  Trade failed ({self._consecutive_failures}x) — backing off {backoff}s")
+                        self._last_trade_time = time.time() + backoff - 55
+                    else:
+                        logger.warning("⚠️  Trade did not complete — retrying in 55s")
+                else:
+                    self._consecutive_failures = 0  # reset on success
             finally:
                 self._trading_active = False
-            self._last_trade_time = time.time()
 
     def execute_trade(self, direction: Direction) -> Optional[Dict]:
         position_size  = self.risk_manager.calculate_position_size()
@@ -337,7 +353,7 @@ class TradingBot:
         logger.info("=" * 60)
 
         try:
-            while True:
+            while not self._stop_flag:
                 can_trade, reason = self.risk_manager.can_trade()
                 if not can_trade:
                     logger.warning(f"⛔ Trading blocked: {reason}")
