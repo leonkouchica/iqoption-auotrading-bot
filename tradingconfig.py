@@ -17,14 +17,14 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    asset: str = "USDNGN-OTC"                  # Trading asset
-    expiry_minutes: int = 2                      # Trade expiry (1, 2, 5, 10, 15 minutes)
+    asset: str = "EURUSD"                       # Trading asset (most liquid forex pair)
+    expiry_minutes: int = 5                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     
     # ═══════════════════════════════════════════════════════════════════════
     #  TIMING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    duration_minutes: int = 40                   # How long to run (till ~4pm)
+    duration_minutes: int = 540                   # Run for 9 hours (08:00-17:00 UTC full session)
     trade_seconds: Tuple[int, ...] = (0, 1, 2)   # Seconds of minute to trade
     
     # ═══════════════════════════════════════════════════════════════════════
@@ -39,20 +39,20 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     risk_per_trade: float = 0.2                  # % of balance to risk per trade
     min_trade_amount: float = 5.0                # Minimum trade size
-    max_trade_amount: float = 45.0              # Maximum trade size
+    max_trade_amount: float = 40.0              # Maximum trade size
     
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - PROTECTION FEATURES
     # ═══════════════════════════════════════════════════════════════════════
-    max_consecutive_losses: int = 7              # Pause after N losses
+    max_consecutive_losses: int = 3              # Pause after N losses
     cooloff_minutes: int = 5                     # How long to pause after losses
     max_drawdown_percent: float = 10.0           # Stop if balance drops X% from peak
     
     # ═══════════════════════════════════════════════════════════════════════
     #  RISK MANAGEMENT - TRADING HOURS
     # ═══════════════════════════════════════════════════════════════════════
-    trading_start_hour: int = 7                  # 24-hour format (7 AM UTC = European open)
-    trading_end_hour: int = 16                   # 24-hour format (4 PM UTC = US close)
+    trading_start_hour: int = 8                  # 24-hour format (8 AM UTC = London morning)
+    trading_end_hour: int = 17                   # 24-hour format (5 PM UTC = NY afternoon)
     
     def __post_init__(self):
         """Validate all configuration settings"""

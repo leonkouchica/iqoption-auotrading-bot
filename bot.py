@@ -31,22 +31,45 @@ def generate_signal_from_live_candle(candle) -> Direction:
     - Momentum (size of latest candle body vs average)
     - Rejection patterns (long wicks = potential reversal)
     
+    NEW FILTERS:
+    - Ranging-market detection (skip choppy/alternating candles)
+    - Higher-timeframe trend confirmation (5-min must agree with 1-min)
+    
     Returns Direction.CALL, Direction.PUT, or Direction.INDECISION.
+    Also sets _bot._last_signal_strength to 'STRONG' or 'CONFIRMED'.
     """
     cm = _bot.candle_manager if _bot else None
+    _bot._last_signal_strength = None
     
     if cm is None:
         if candle.close > candle.open: return Direction.CALL
         elif candle.close < candle.open: return Direction.PUT
         return Direction.INDECISION
     
-    candles = cm.get_candles(_bot.config.asset, 60, count=3)
+    candles_1m = cm.get_candles(_bot.config.asset, 60, count=8)
     
-    if len(candles) < 3:
-        logger.info(f"📊 Building history ({len(candles)}/3 candles)")
+    if len(candles_1m) < 5:
+        logger.info(f"📊 Building history ({len(candles_1m)}/5 candles)")
         return Direction.CALL if candle.close > candle.open else Direction.PUT if candle.close < candle.open else Direction.INDECISION
     
-    c1, c2, c3 = candles[-3], candles[-2], candles[-1]
+    # ─── FILTER 1: Ranging-market detection ──────────────────────────
+    # Check if the last 5 candles are alternating direction (choppy market)
+    last5 = candles_1m[-5:]
+    dirs_5 = [1 if c.close > c.open else -1 for c in last5]
+    flips = sum(1 for i in range(1, len(dirs_5)) if dirs_5[i] != dirs_5[i-1])
+    if flips >= 4:
+        logger.info(f"⏭️  SKIP | Choppy market ({flips} flips in 5 candles)")
+        return Direction.INDECISION
+    
+    # ─── FILTER 2: Higher-timeframe trend confirmation ───────────────
+    # Get 5-minute candles to confirm the broader trend
+    candles_5m = cm.get_candles(_bot.config.asset, 300, count=2)
+    htf_trend = 0  # 0=neutral, 1=bullish, -1=bearish
+    if len(candles_5m) >= 2:
+        last_5m = candles_5m[-1]
+        htf_trend = 1 if last_5m.close > last_5m.open else -1 if last_5m.close < last_5m.open else 0
+    
+    c1, c2, c3 = candles_1m[-3], candles_1m[-2], candles_1m[-1]
     
     def body(c):    return abs(c.close - c.open)
     def dir_sign(c): return 1 if c.close > c.open else -1 if c.close < c.open else 0
@@ -60,23 +83,39 @@ def generate_signal_from_live_candle(candle) -> Direction:
     rejection_up = upper_w(c3) > body(c3) * 0.8 and d3 <= 0
     rejection_down = lower_w(c3) > body(c3) * 0.8 and d3 >= 0
     
-    logger.info(f"📊 Trend={trend:+d} | Mom={momentum:.1f}x | Body={body(c3):.6f} | U-Wick={upper_w(c3):.6f} | L-Wick={lower_w(c3):.6f}")
+    logger.info(f"📊 Trend={trend:+d} | Mom={momentum:.1f}x | Body={body(c3):.6f} | U-Wick={upper_w(c3):.6f} | L-Wick={lower_w(c3):.6f} | HTF={htf_trend:+d}")
     
-    # ─── Strong trend + momentum + no rejection ───
+    # ─── Strong trend + momentum + no rejection + HTF agrees ───
     if trend >= 2 and momentum >= 0.5 and not rejection_up:
-        logger.info("🟢 STRONG CALL")
-        return Direction.CALL
+        if htf_trend >= 0:  # 5-min is bullish or neutral
+            logger.info("🟢 STRONG CALL")
+            _bot._last_signal_strength = 'STRONG'
+            return Direction.CALL
+        else:
+            logger.info(f"⏭️  SKIP | STRONG CALL rejected — HTF bearish ({htf_trend:+d})")
     if trend <= -2 and momentum >= 0.5 and not rejection_down:
-        logger.info("🔴 STRONG PUT")
-        return Direction.PUT
+        if htf_trend <= 0:  # 5-min is bearish or neutral
+            logger.info("🔴 STRONG PUT")
+            _bot._last_signal_strength = 'STRONG'
+            return Direction.PUT
+        else:
+            logger.info(f"⏭️  SKIP | STRONG PUT rejected — HTF bullish ({htf_trend:+d})")
     
     # ─── Confirmed trend (all 3 same direction) ───
     if trend == 3 and momentum >= 0.3:
-        logger.info("🟢 CONFIRMED CALL (3 green)")
-        return Direction.CALL
+        if htf_trend >= 0:
+            logger.info("🟢 CONFIRMED CALL (3 green)")
+            _bot._last_signal_strength = 'CONFIRMED'
+            return Direction.CALL
+        else:
+            logger.info(f"⏭️  SKIP | CONFIRMED CALL rejected — HTF bearish ({htf_trend:+d})")
     if trend == -3 and momentum >= 0.3:
-        logger.info("🔴 CONFIRMED PUT (3 red)")
-        return Direction.PUT
+        if htf_trend <= 0:
+            logger.info("🔴 CONFIRMED PUT (3 red)")
+            _bot._last_signal_strength = 'CONFIRMED'
+            return Direction.PUT
+        else:
+            logger.info(f"⏭️  SKIP | CONFIRMED PUT rejected — HTF bullish ({htf_trend:+d})")
     
     # ─── Rejection alert ───
     if rejection_up:
@@ -105,6 +144,7 @@ class TradingBot:
         self._last_trade_candle_id = None     # Track last candle we traded on
         self._last_trade_time = 0             # Timestamp of last trade
         self._trading_active = False          # Lock: only 1 trade at a time
+        self._last_signal_strength = None     # 'STRONG' or 'CONFIRMED' for position sizing
         
         # ─── Ensure clean shutdown on ANY exit ───
         atexit.register(self._force_shutdown)
@@ -212,6 +252,14 @@ class TradingBot:
 
     def execute_trade(self, direction: Direction) -> Optional[Dict]:
         position_size  = self.risk_manager.calculate_position_size()
+        
+        # Scale position by signal strength: CONFIRMED = 60% of full size
+        if self._last_signal_strength == 'CONFIRMED':
+            scaled = round(position_size * 0.6, 2)
+            scaled = max(scaled, self.config.min_trade_amount)  # respect min
+            logger.info(f"💰 Scaled position: ${position_size} → ${scaled} (CONFIRMED signal)")
+            position_size = scaled
+        
         balance_before = self.risk_manager.current_balance
 
         # Place the trade — don't block waiting for confirmation
