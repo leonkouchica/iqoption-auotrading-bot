@@ -17,7 +17,7 @@ class TradingConfig:
     # ═══════════════════════════════════════════════════════════════════════
     #  TRADING SETTINGS
     # ═══════════════════════════════════════════════════════════════════════
-    asset: str = "BTCUSD"                    # Crypto — 24/7, always open for testing
+    asset: str = "EURUSD-OTC"                    # Crypto — 24/7, always open for testing
     expiry_minutes: int = 5                      # Trade expiry (1, 2, 5, 10, 15 minutes)
     option_type: str = OptionType.BINARY_OPTION  # 'binary' or 'digital'
     
